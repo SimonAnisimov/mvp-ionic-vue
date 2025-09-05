@@ -3,12 +3,15 @@ import { NFCScanResult, NFCScanConfig, NFCCardData } from '../types/nfc';
 
 // Условный импорт NFC библиотеки только для мобильных платформ
 let NFC: any = null;
+let nfcModuleLoadError: any = null;
 
 if (Capacitor.isNativePlatform()) {
   try {
     const nfcModule = require('@exxili/capacitor-nfc');
     NFC = nfcModule.NFC;
+    console.log('NFC модуль загружен успешно');
   } catch (error) {
+    nfcModuleLoadError = error;
     console.warn('NFC module not available:', error);
   }
 }
@@ -34,6 +37,11 @@ export class NFCService {
         return false;
       }
 
+      if (nfcModuleLoadError) {
+        console.log('NFC модуль не загружен из-за ошибки:', nfcModuleLoadError.message);
+        return false;
+      }
+
       if (!NFC) {
         console.log('NFC модуль недоступен');
         return false;
@@ -43,10 +51,21 @@ export class NFCService {
         return true;
       }
 
-      // Проверяем поддержку NFC для @exxili/capacitor-nfc
-      const isSupported = await NFC.isSupported();
-      if (!isSupported.supported) {
-        console.log('NFC не поддерживается на этом устройстве');
+      // Проверяем поддержку NFC для @exxili/capacitor-nfc с дополнительной защитой
+      try {
+        const isSupported = await Promise.race([
+          NFC.isSupported(),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('NFC check timeout')), 5000)
+          )
+        ]);
+        
+        if (!isSupported || !isSupported.supported) {
+          console.log('NFC не поддерживается на этом устройстве');
+          return false;
+        }
+      } catch (supportError) {
+        console.error('Ошибка проверки поддержки NFC:', supportError);
         return false;
       }
 
